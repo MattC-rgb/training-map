@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Training Jobs Map</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  >
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .legend {
+      background: white;
+      padding: 10px 12px;
+      border-radius: 5px;
+      font: 14px Arial, sans-serif;
+      line-height: 1.7;
+      box-shadow: 0 1px 5px #777;
+    }
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #333;
+      box-sizing: border-box;
+      background: #f97316;
+    }
+    .assigned { outline: 4px solid #1677ff; outline-offset: 2px; }
+    .onscene { outline: 4px solid #16a34a; outline-offset: 2px; }
+    .clear { outline: 4px solid #6b7280; outline-offset: 2px; }
+    .map-error {
+      position: absolute;
+      z-index: 1000;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font: 14px Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="message" class="map-error">Waiting for training jobs…</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([-37.285443, 144.92095], 11);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markers = L.layerGroup().addTo(map);
+
+    function markerClass(status) {
+      const value = String(status || "").toLowerCase();
+      if (value === "assigned") return "assigned";
+      if (value === "onscene" || value === "on scene") return "onscene";
+      if (value === "clear" || value === "cleared") return "clear";
+      return "";
+    }
+
+    function addLegend() {
+      const legend = L.control({ position: "bottomright" });
+      legend.onAdd = function () {
+        const div = L.DomUtil.create("div", "legend");
+        div.innerHTML =
+          '<b>Training job status</b><br>' +
+          '<span style="color:#1677ff">●</span> Assigned<br>' +
+          '<span style="color:#16a34a">●</span> Onscene<br>' +
+          '<span style="color:#6b7280">●</span> Clear';
+        return div;
+      };
+      legend.addTo(map);
+    }
+    addLegend();
+
+    async function loadJobs() {
+      const message = document.getElementById("message");
+      try {
+        const response = await fetch("./training-jobs.json?ts=" + Date.now(), {
+          cache: "no-store"
+        });
+        if (!response.ok) throw new Error("Could not load training-jobs.json");
+
+        const jobs = await response.json();
+        markers.clearLayers();
+
+        const bounds = [];
+
+        jobs.forEach(job => {
+          const lat = Number(job.Lat);
+          const lon = Number(job.Long);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+          const status = job.Status && job.Status.Value
+            ? job.Status.Value
+            : job.Status || "Open";
+
+          const icon = L.divIcon({
+            className: "",
+            html: '<div class="dot ' + markerClass(status) + '"></div>',
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
+          });
+
+          const marker = L.marker([lat, lon], { icon }).bindPopup(
+            "<b>" + (job.JobID || "") + "</b><br>" +
+            (job.JobType || "") + "<br>" +
+            "Status: " + status + "<br>" +
+            (job.Address || "") + "<br>" +
+            (job.Suburb || "")
+          );
+
+          marker.addTo(markers);
+          bounds.push([lat, lon]);
+        });
+
+        if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+        message.textContent = jobs.length
+          ? "Showing " + jobs.length + " training job(s)"
+          : "No training jobs in the feed";
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    }
+
+    loadJobs();
+    setInterval(loadJobs, 30000);
+  </script>
+</body>
+</html>
