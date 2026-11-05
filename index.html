@@ -82,6 +82,7 @@
 
     async function loadJobs() {
       const message = document.getElementById("message");
+
       try {
         const response = await fetch("./training-jobs.json?ts=" + Date.now(), {
           cache: "no-store"
@@ -90,8 +91,6 @@
 
         const jobs = await response.json();
         markers.clearLayers();
-
-        const bounds = [];
 
         jobs.forEach(job => {
           const lat = Number(job.Lat);
@@ -118,10 +117,8 @@
           );
 
           marker.addTo(markers);
-          bounds.push([lat, lon]);
         });
 
-        if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
         message.textContent = jobs.length
           ? "Showing " + jobs.length + " training job(s)"
           : "No training jobs in the feed";
